@@ -1,11 +1,11 @@
-"""点检计划接口：维护点检计划，覆盖提交审批、确认批复、作废计划等动作。"""
+"""点检计划接口：维护点检计划，覆盖批量送审、提交审批、确认批复、作废计划等动作。"""
 from __future__ import annotations
 
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.schemas import ActionResult, EntryPayload, PageResult
+from app.schemas import ActionResult, BatchSubmitPayload, EntryPayload, PageResult
 from app.services.plan import PlanService
 
 router = APIRouter(prefix="/api/plan", tags=["点检计划"])
@@ -14,6 +14,7 @@ service = PlanService()
 
 LIST_FIELDS = ["计划编号", "点检对象", "点检周期", "点检项目", "计划工期", "编制人员", "审批人员", "计划状态"]
 STATUSES = ["待编制", "待审批", "已批复", "已作废"]
+BATCH_LIMIT = 200
 
 
 @router.get("", response_model=PageResult[dict])
@@ -28,6 +29,33 @@ def list_entries(
         raise HTTPException(status_code=400, detail="每页最多 200 条，请缩小分页范围")
     items, total = service.list_entries(keyword=keyword, status=status, page=page, size=size)
     return PageResult(items=items, total=total, page=page, size=size)
+
+
+@router.get("/stats", response_model=dict)
+def plan_stats() -> dict[str, int]:
+    """按审批状态汇总计划数量，送审后列表与待审数量看到的是同一份最新结果。"""
+    return service.status_stats()
+
+
+@router.post("/batch-submit", response_model=dict)
+def batch_submit(payload: BatchSubmitPayload) -> dict[str, Any]:
+    """把勾选的待送审点检计划一次推给审批人。
+
+    逐条独立处理：资料不全先挑出、已被别人审过只跳过该张、批内重复只认第一次，
+    一张失败不会让整批作废；响应里带回每张计划的成功/失败回执。
+    """
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="请先勾选需要送审的点检计划")
+    if len(payload.ids) > BATCH_LIMIT:
+        raise HTTPException(status_code=400, detail=f"单次最多送审 {BATCH_LIMIT} 张，请分批提交")
+    return service.batch_submit(payload.ids, approver=payload.approver)
+
+
+@router.get("/export")
+def export_entries() -> dict[str, Any]:
+    """导出点检计划清单：返回当前过滤条件下的全量数据。"""
+    items, total = service.list_entries(page=1, size=10000)
+    return {"module": "plan", "total": total, "items": items}
 
 
 @router.get("/{entry_id}", response_model=dict)
@@ -56,10 +84,3 @@ def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
-
-
-@router.get("/export")
-def export_entries() -> dict[str, Any]:
-    """导出点检计划清单：返回当前过滤条件下的全量数据。"""
-    items, total = service.list_entries(page=1, size=10000)
-    return {"module": "plan", "total": total, "items": items}

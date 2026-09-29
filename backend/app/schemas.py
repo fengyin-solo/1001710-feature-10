@@ -28,6 +28,14 @@ class EntryPayload(BaseModel):
     remark: str | None = None
 
 
+class BatchSubmitPayload(BaseModel):
+    """点检计划批量送审：勾选的计划 id 清单，可统一指定审批人。"""
+
+    ids: list[int] = Field(default_factory=list)
+    approver: str | None = None
+    remark: str | None = None
+
+
 
 class BoilerEntry(BaseModel):
     """锅炉设备明细结构。"""
