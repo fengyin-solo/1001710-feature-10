@@ -1,11 +1,11 @@
-"""点检计划接口：维护点检计划，覆盖提交审批、确认批复、作废计划等动作。"""
+"""点检计划接口：维护点检计划，覆盖提交审批、确认批复、作废计划与批量送审。"""
 from __future__ import annotations
 
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.schemas import ActionResult, EntryPayload, PageResult
+from app.schemas import ActionResult, BatchResult, BatchSubmitPayload, EntryPayload, PageResult
 from app.services.plan import PlanService
 
 router = APIRouter(prefix="/api/plan", tags=["点检计划"])
@@ -28,6 +28,22 @@ def list_entries(
         raise HTTPException(status_code=400, detail="每页最多 200 条，请缩小分页范围")
     items, total = service.list_entries(keyword=keyword, status=status, page=page, size=size)
     return PageResult(items=items, total=total, page=page, size=size)
+
+
+@router.get("/stats")
+def status_stats() -> dict[str, int]:
+    """各审批状态的计划数量：送审后待审数量随列表一起刷新，重进页面看到的也是这份。"""
+    return service.status_summary()
+
+
+@router.post("/batch-submit", response_model=BatchResult)
+def submit_batch(payload: BatchSubmitPayload) -> BatchResult:
+    """把勾选的计划一次推给审批人：缺字段的先挑出，其余逐条回执，单张失败不作废整批。"""
+    if not payload.ids:
+        return BatchResult(ok=False, message="请先勾选要送审的点检计划")
+    approver = (payload.approver or "").strip() or None
+    result = service.submit_batch(payload.ids, approver=approver)
+    return BatchResult(**result)
 
 
 @router.get("/{entry_id}", response_model=dict)

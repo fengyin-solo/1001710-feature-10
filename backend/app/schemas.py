@@ -28,6 +28,22 @@ class EntryPayload(BaseModel):
     remark: str | None = None
 
 
+class BatchSubmitPayload(BaseModel):
+    """批量送审请求：勾选的计划 id 列表，以及要一并推给的审批人。"""
+
+    ids: list[int] = Field(default_factory=list)
+    approver: str | None = None
+
+
+class BatchResult(BaseModel):
+    """批量送审回执：整批结论 + 每张计划各自的成功或失败说明。"""
+
+    ok: bool
+    message: str
+    results: list[dict[str, Any]] = Field(default_factory=list)
+    summary: dict[str, int] = Field(default_factory=dict)
+
+
 
 class BoilerEntry(BaseModel):
     """锅炉设备明细结构。"""
